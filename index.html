@@ -26,6 +26,18 @@ body{touch-action:pan-y;background:radial-gradient(circle at 18% 10%, rgba(95,12
 .slide.active .content>*{animation:up .65s ease both}.slide.active .content>*:nth-child(2){animation-delay:.06s}.slide.active .content>*:nth-child(3){animation-delay:.12s}.slide.active .content>*:nth-child(4){animation-delay:.18s}.slide.active .visual>*{animation:pop .8s cubic-bezier(.2,1.1,.2,1) both .12s}@keyframes up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}@keyframes pop{from{opacity:0;transform:translateY(22px) scale(.95)}to{opacity:1}}
 @media(max-width:960px){html,body{overflow:auto}.deck{height:auto;min-height:100svh;overflow:visible}.slide{position:relative;min-height:100svh;display:none;visibility:visible;opacity:1;transform:none;padding:78px 16px 92px}.slide.active{display:grid}.shell{height:auto;grid-template-columns:1fr;gap:16px}.content{padding:28px}.visual{min-height:360px}.controls{right:14px;top:16px}.help{left:14px;top:16px;max-width:52vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hud{left:14px;right:14px}.agenda{grid-template-columns:1fr}.maker{grid-template-columns:1fr}.tip{left:auto;right:0}.compact h1,h1{font-size:clamp(44px,14vw,70px)}}
 @media(max-width:560px){.visual{min-height:300px;padding:16px}.orbit{width:78vw}.planet{width:68px;height:68px;font-size:10px;border-radius:20px}.center{width:92px;height:92px;font-size:24px}.prompt-node{width:82px;min-height:64px;font-size:11px;border-radius:18px}.prompt-core{width:112px;height:112px;border-radius:32px;font-size:13px}.map-node{font-size:12px}.map-node.main{width:112px;height:112px;font-size:15px}.m1,.m2,.m3,.m4,.m5{width:96px;height:72px}.cards,.nodes{gap:9px}.card,.node{font-size:14px;padding:12px}.btn{height:40px;padding:0 13px}.sub{font-size:17px}.quote{font-size:14px}}
+
+/* Tooltip stability patch: use a viewport-level floating tooltip so content is never clipped by panels/cards */
+.panel{overflow:visible;}
+.panel:after{inset:0;border-radius:inherit;}
+.card,.node{z-index:1;}
+.card:hover,.node:hover{z-index:80;}
+.tip{display:none!important;}
+#floatingTip{position:fixed;left:0;top:0;z-index:9999;max-width:min(360px,calc(100vw - 32px));padding:14px 15px;border-radius:16px;background:linear-gradient(135deg,rgba(8,13,34,.98),rgba(17,24,55,.96));border:1px solid rgba(118,228,255,.48);color:#f3f7ff;font-size:13.5px;line-height:1.48;font-weight:560;letter-spacing:-.01em;box-shadow:0 24px 70px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.06) inset;backdrop-filter:blur(22px) saturate(1.35);-webkit-backdrop-filter:blur(22px) saturate(1.35);opacity:0;transform:translate3d(0,8px,0) scale(.98);pointer-events:none;transition:opacity .16s ease,transform .16s ease;}
+#floatingTip.show{opacity:1;transform:translate3d(0,0,0) scale(1);}
+#floatingTip:before{content:"";position:absolute;width:10px;height:10px;left:18px;top:-6px;transform:rotate(45deg);background:rgba(10,16,38,.98);border-left:1px solid rgba(118,228,255,.48);border-top:1px solid rgba(118,228,255,.48);}
+@media(max-width:700px){#floatingTip{font-size:13px;max-width:calc(100vw - 24px);padding:12px 13px}.panel{overflow:visible}}
+
 </style>
 </head>
 <body>
@@ -52,6 +64,53 @@ function next(){if(index<slides.length-1){index++;render(1)}}function prev(){if(
 let startX=0,startY=0;document.addEventListener('touchstart',e=>{startX=e.changedTouches[0].screenX;startY=e.changedTouches[0].screenY},{passive:true});document.addEventListener('touchend',e=>{const dx=e.changedTouches[0].screenX-startX,dy=e.changedTouches[0].screenY-startY;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)){dx<0?next():prev()}},{passive:true});
 document.querySelectorAll('.panel').forEach(p=>p.addEventListener('pointermove',e=>{const r=p.getBoundingClientRect();p.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');p.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%')}));
 document.addEventListener('pointermove',e=>{const x=(e.clientX/window.innerWidth-.5),y=(e.clientY/window.innerHeight-.5);document.querySelectorAll('[data-depth]').forEach(el=>{const d=+el.dataset.depth||16;el.style.transform=`rotateY(${x*d/3}deg) rotateX(${-y*d/4}deg) translate3d(${x*d}px,${y*d}px,0)`});document.querySelector('.grid').style.transform=`perspective(700px) rotateX(${58+y*4}deg) translate(${x*18}px,18%)`});
+
+// Viewport-level tooltips: prevents hidden/cropped text inside glass cards and slide panels.
+const floatingTip=document.createElement('div');
+floatingTip.id='floatingTip';
+floatingTip.setAttribute('role','tooltip');
+document.body.appendChild(floatingTip);
+let activeTipTarget=null;
+function positionFloatingTip(e){
+  if(!activeTipTarget) return;
+  const margin=16;
+  const gap=18;
+  floatingTip.style.left='0px';
+  floatingTip.style.top='0px';
+  const r=floatingTip.getBoundingClientRect();
+  let x=e.clientX+gap;
+  let y=e.clientY+gap;
+  if(x+r.width+margin>innerWidth) x=e.clientX-r.width-gap;
+  if(y+r.height+margin>innerHeight) y=e.clientY-r.height-gap;
+  x=Math.max(margin,Math.min(x,innerWidth-r.width-margin));
+  y=Math.max(margin,Math.min(y,innerHeight-r.height-margin));
+  floatingTip.style.left=x+'px';
+  floatingTip.style.top=y+'px';
+}
+document.querySelectorAll('.card,.node').forEach(el=>{
+  const tip=el.querySelector('.tip');
+  if(!tip) return;
+  el.addEventListener('pointerenter',e=>{
+    activeTipTarget=el;
+    floatingTip.textContent=tip.textContent.trim();
+    floatingTip.classList.add('show');
+    positionFloatingTip(e);
+  });
+  el.addEventListener('pointermove',positionFloatingTip);
+  el.addEventListener('pointerleave',()=>{
+    if(activeTipTarget===el) activeTipTarget=null;
+    floatingTip.classList.remove('show');
+  });
+  el.addEventListener('focus',e=>{
+    activeTipTarget=el;
+    floatingTip.textContent=tip.textContent.trim();
+    floatingTip.classList.add('show');
+    const r=el.getBoundingClientRect();
+    positionFloatingTip({clientX:r.left+r.width/2,clientY:r.bottom});
+  });
+  el.addEventListener('blur',()=>{activeTipTarget=null;floatingTip.classList.remove('show')});
+});
+
 function sizeCanvas(c){const dpr=Math.min(devicePixelRatio||1,2);c.width=innerWidth*dpr;c.height=innerHeight*dpr;c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';return dpr}const neb=document.getElementById('nebula'),nctx=neb.getContext('2d');const part=document.getElementById('particles'),pctx=part.getContext('2d');let ndpr=1,pdpr=1,blobs=[],dots=[];function reset(){ndpr=sizeCanvas(neb);pdpr=sizeCanvas(part);blobs=[...Array(20)].map(()=>({x:Math.random()*neb.width,y:Math.random()*neb.height,r:(90+Math.random()*240)*ndpr,vx:(Math.random()-.5)*.24*ndpr,vy:(Math.random()-.5)*.24*ndpr,h:Math.random()}));dots=[...Array(Math.min(105,Math.floor(innerWidth/12)))].map(()=>({x:Math.random()*part.width,y:Math.random()*part.height,z:.25+Math.random(),vx:(Math.random()-.5)*.35*pdpr,vy:(Math.random()-.5)*.35*pdpr}))}addEventListener('resize',reset);reset();
 function bg(){nctx.clearRect(0,0,neb.width,neb.height);nctx.fillStyle='#050713';nctx.fillRect(0,0,neb.width,neb.height);for(const b of blobs){b.x+=b.vx;b.y+=b.vy;if(b.x<-b.r)b.x=neb.width+b.r;if(b.x>neb.width+b.r)b.x=-b.r;if(b.y<-b.r)b.y=neb.height+b.r;if(b.y>neb.height+b.r)b.y=-b.r;const g=nctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);const colors=[`rgba(95,124,255,.16)`,`rgba(118,228,255,.13)`,`rgba(255,119,216,.10)`,`rgba(170,124,255,.14)`];g.addColorStop(0,colors[Math.floor(b.h*colors.length)]);g.addColorStop(1,'rgba(0,0,0,0)');nctx.fillStyle=g;nctx.beginPath();nctx.arc(b.x,b.y,b.r,0,Math.PI*2);nctx.fill()}requestAnimationFrame(bg)}
 function particles(){pctx.clearRect(0,0,part.width,part.height);for(let i=0;i<dots.length;i++){const a=dots[i];a.x+=a.vx*a.z;a.y+=a.vy*a.z;if(a.x<0)a.x=part.width;if(a.x>part.width)a.x=0;if(a.y<0)a.y=part.height;if(a.y>part.height)a.y=0;pctx.beginPath();pctx.arc(a.x,a.y,1.2*pdpr*a.z,0,Math.PI*2);pctx.fillStyle=`rgba(220,240,255,${.18+.35*a.z})`;pctx.fill();for(let j=i+1;j<dots.length;j++){const b=dots[j],dx=a.x-b.x,dy=a.y-b.y,dist=Math.hypot(dx,dy);if(dist<110*pdpr){pctx.strokeStyle=`rgba(118,228,255,${(1-dist/(110*pdpr))*.12})`;pctx.lineWidth=.7*pdpr;pctx.beginPath();pctx.moveTo(a.x,a.y);pctx.lineTo(b.x,b.y);pctx.stroke()}}}requestAnimationFrame(particles)}bg();particles();render();
